@@ -1,0 +1,188 @@
+# Imports
+import data_prep
+import json 
+import os
+import pandas as pd
+import numpy as np
+import pickle
+
+from sklearn.model_selection import train_test_split
+from sklearn.ensemble import RandomForestClassifier
+from scipy.stats import randint
+from sklearn.model_selection import RandomizedSearchCV
+from sklearn.metrics import accuracy_score, confusion_matrix, classification_report
+
+def set_data(data):
+    # load json data 
+    os.chdir('C:/Users/eb/Downloads/ki-api-main/ki-api-main')
+    with open('set_data.json', 'w') as write_to:
+        json.dump(data, write_to)
+    with open('set_data.json', 'r') as read_data: 
+        data_dict = json.load(read_data)
+    filename = data_dict['filename']
+    is_first = data_dict['isFirst']
+    dataRows = data_dict['dataRows']
+    data_df  = data_dict['DATA']
+    
+    
+    # split dataRows for dataframe
+    dataRowsSplit = dataRows.split('.')
+
+    # create a dataframe and write it to csv
+    df = pd.DataFrame(data_df, columns=dataRowsSplit ) 
+
+    path = os.path.join('C:/Users/eb/Downloads/ki-api-main/ki-api-main',filename)
+    os.makedirs(path, exist_ok=True)
+    os.chdir(path)
+    if is_first: 
+        df.to_csv('dataframe_'+filename+'.csv')
+    else:
+        df.to_csv('dataframe_'+filename+'.csv', mode='a', index=False, header=False) 
+
+    #if successful, return json
+    return json.dumps(len(df.index))
+            
+def train_model(data):
+    # load json data
+    os.chdir('C:/Users/eb/Downloads/ki-api-main/ki-api-main')
+    with open('train_model.json', 'w') as write_to:
+        json.dump(data, write_to)
+    with open('train_model.json', 'r') as read_data: 
+        data_dict = json.load(read_data)
+    filename = data_dict['filename']
+    label = data_dict['label']
+    testSize = data_dict['testSize']
+    kiModel = data_dict['kiModel']
+    numIteration = data_dict['numIteration']
+    numSplits = data_dict['numSplits']
+    categorical_features = data_dict['categorical']
+    numerical_features = data_dict['numerical']
+    
+    # read csv into dataframe 
+    path = os.path.join('C:/Users/eb/Downloads/ki-api-main/ki-api-main',filename)
+    os.chdir(path)
+    df = pd.read_csv('dataframe_'+filename+'.csv')
+    
+    label_col = df[label]
+    df_no_label = df.drop(label, axis=1)
+    x_train, x_test, y_train, y_test = train_test_split(df_no_label,label_col,test_size=testSize,random_state=42)
+    
+    pipeline = data_prep.create_dataprep_pipeline(categorical_features, numerical_features)
+    x_train_prep = pipeline.fit_transform(x_train)
+    x_test_prep = pipeline.transform(x_test)
+    
+    if kiModel == 'Regression':
+        # define model type and hyper-parameter values
+        best_model = LogisticRegression(C=5,max_iter=numIteration*100,class_weight='balanced',multi_class='multinomial',warm_start=True)
+
+        # fit the model to the training data
+        best_model.fit(x_train_prep, y_train)
+        
+    elif kiModel == 'RandomForest':
+        # create a random forest classifier
+        rf = RandomForestClassifier()
+    
+        # use random search to find the best hyperparameters
+        param_dist = {'n_estimators': randint(50,500),'max_depth': randint(1,20)}
+        rand_search = RandomizedSearchCV(rf,param_distributions=param_dist,n_iter=numIteration)
+    
+        # fit the random search object to the data
+        rand_search.fit(x_train_prep,y_train)
+    
+        # create a variable for the best model
+        best_model = rand_search.best_estimator_
+    
+    y_pred = best_model.predict(x_test_prep)    
+    accuracy = accuracy_score(y_test, y_pred)
+    
+    # save the best model with pickle
+    pickle.dump(best_model, open(filename+'.pkl','wb'))
+    pickle.dump(pipeline, open(filename+'pipeline.pkl','wb'))
+    with open('model_quality.json', 'w') as write_to:
+        json.dump(accuracy, write_to)
+        
+    return json.dumps(accuracy)
+    
+def model_quality():
+    # get filename from query
+    filename = 'Materialstamm_MATNR'
+    feat_imp_dict = 5
+    
+    # change to needed directory and load model
+    path = os.path.join('C:/Users/eb/Downloads/ki-api-main/ki-api-main',filename)
+    os.chdir(path)
+    with open('model_quality.json', 'r') as read_data: 
+        accuracy = json.load(read_data)
+    
+    # open saved model 
+    model = pickle.load(open(filename+'.pkl', 'rb'))
+    pipeline = pickle.load(open(filename+'pipeline.pkl', 'rb'))
+
+    # get feature_importances
+    feature_names = pipeline.get_feature_names_out()
+    feature_importances = pd.Series(model.feature_importances_,feature_names).sort_values(ascending=False)
+    imp_names_dict={}
+    imp_names_dict['accuracy'] = accuracy
+    feat_imp_names = feature_importances.index
+    for i in range(feat_imp_dict):
+        feat_name = feat_imp_names[i]
+        feat_imp = feature_importances.at[feat_name]
+        imp_names_dict[feat_name] = feat_imp
+  
+    return json.dumps(imp_names_dict)
+    
+def predict_value(data):
+    # load json data
+    os.chdir('C:/Users/eb/Downloads/ki-api-main/ki-api-main')
+    with open('predict_value.json', 'w') as write_to:
+        json.dump(data, write_to)
+    with open('predict_value.json', 'r') as read_data: 
+        data_dict = json.load(read_data)
+    filename = data_dict['filename']
+    dataRows = data_dict['dataRows']
+    data_pred  = data_dict['DATA']
+    
+    # open saved model and pipeline
+    path = os.path.join('C:/Users/eb/Downloads/ki-api-main/ki-api-main',filename)
+    os.chdir(path)
+    model = pickle.load(open(filename+'.pkl', 'rb'))
+    pipeline = pickle.load(open(filename+'pipeline.pkl', 'rb'))
+    
+    # split dataRows for dataframe
+    dataRowsSplit = dataRows.split('.')  
+    
+    # create a dataframe 
+    df_predict = pd.DataFrame(data_pred, columns=dataRowsSplit )
+    
+    # transform data for predict
+    data_prep = pipeline.transform(df_predict)
+    
+    # predict and append prediction
+    pred = (model.predict(data_prep))
+    pred = pred.tolist()
+    
+    return json.dumps(pred)
+    
+def delete_data_model(data):
+    # load json data 
+    os.chdir('C:/Users/eb/Downloads/ki-api-main/ki-api-main')
+    with open('delete_data_model.json', 'w') as write_to:
+        json.dump(data, write_to)
+    with open('delete_data_model.json', 'r') as read_data: 
+        data_dict = json.load(read_data)
+    filename = data_dict['filename']
+    delData = data_dict['delData']
+    delModel = data_dict['delModel']
+    
+    # change to needed directory
+    path = os.path.join('C:/Users/eb/Downloads/ki-api-main/ki-api-main',filename)
+    os.chdir(path)
+
+    # delete model and/or data
+    if delData:
+        os.remove('dataframe_'+filename+'.csv')
+    if delModel:
+        os.remove(filename+'.pkl')
+        os.remove(filename+'pipeline.pkl')
+    
+    return json.dumps(filename)
