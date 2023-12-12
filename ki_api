@@ -1,0 +1,130 @@
+#!/usr/bin/python3
+from flask import Flask, request
+from datetime import datetime, date
+import ki_methods
+
+app = Flask(__name__)
+                
+def post_set_training_data(data):
+        status_text = 'Setting training data...'
+        try:
+                data_read = ki_methods.set_data(data)
+                status_text = status_text + "\tSuccess"
+                status_code = 200
+        except:
+                status_text = status_text + "\tError"
+                status_code = 415
+
+        if (status_code == 200):
+                return data_read, status_code
+        else:
+                return status_text, status_code
+                
+def post_start_training(data):
+        status_text = 'Starting training...'
+        try:
+                data_read = ki_methods.train_model(data)
+                status_text = status_text + "\tSuccess"
+                status_code = 200
+        except:
+                status_text = status_text + "\tError"
+                status_code = 415
+
+        if (status_code == 200):
+                return data_read, status_code
+        else:
+                return status_text, status_code
+
+def post_predict_value(data):
+        status_text = 'Predicting value...'
+        try:
+                data_read = ki_methods.predict_value(data)
+                status_text = status_text + "\tSuccess"
+                status_code = 200
+        except:
+                status_text = status_text + "\tError"
+                status_code = 415
+
+        if (status_code == 200):
+                return data_read, status_code
+        else:
+                return status_text, status_code
+                
+def get_model_status():
+        status_text = 'Getting model status...'
+        try:
+                data_read = ki_methods.model_quality()
+                status_text = status_text + "\tSuccess"
+                status_code = 200
+        except:
+                status_text = status_text + "\tError"
+                status_code = 415
+
+        if (status_code == 200):
+                return data_read, status_code
+        else:
+                return status_text, status_code
+
+def del_data_model(data):
+        status_text = 'Deleting data model...'
+        try:
+                data_read = ki_methods.delete_data_model(data)
+                status_text = status_text + "\tSuccess"
+                status_code = 200
+        except:
+                status_text = status_text + "\tError"
+                status_code = 415
+
+        if (status_code == 200):
+                return data_read, status_code
+        else:
+                return status_text, status_code
+
+@app.post("/set_training_data")
+def set_training_data():
+        data, status_code = post_set_training_data(request.get_json())
+        print(request.host, "- [", datetime.now().strftime("%d.%m.%Y %H:%M:%S"), "] -", request.method,  request.path,  request.scheme.upper(), "-", status_code)
+        if (status_code != 200):
+                print(data)
+        return data, status_code
+        
+@app.post("/start_training")
+def start_training():
+        data, status_code = post_start_training(request.get_json())
+        print(data,request.host, "- [", datetime.now().strftime("%d.%m.%Y %H:%M:%S"), "] -", request.method,  request.path,  request.scheme.upper(), "-", status_code)
+        if (status_code != 200):
+                print(data)
+        return data, status_code
+        
+@app.post("/predict_value")
+def predict_value():
+        data, status_code = post_predict_value(request.get_json())
+        print(request.host, "- [", datetime.now().strftime("%d.%m.%Y %H:%M:%S"), "] -", request.method,  request.path,  request.scheme.upper(), "-", status_code)
+        if (status_code != 200):
+                print(data)
+        return data, status_code
+        
+@app.get("/model_status")
+def model_status():
+        data, status_code = get_model_status()
+        print(request.host, "- [", datetime.now().strftime("%d.%m.%Y %H:%M:%S"), "] -", request.method,  request.path,  request.scheme.upper(), "-", status_code)
+        if (status_code != 200):
+                print(data)
+        return data, status_code
+
+@app.post("/delete_data_model")
+def delete_data_model():
+        data, status_code = del_data_model(request.get_json())
+        print(request.host, "- [", datetime.now().strftime("%d.%m.%Y %H:%M:%S"), "] -", request.method,  request.path,  request.scheme.upper(), "-", status_code)
+        if (status_code != 200):
+                print(data)
+        return data, status_code
+
+if __name__ == "__main__":
+        from waitress import serve
+        print("*".center(80, "*"))
+        print(" Firma ".center(80, "*"))
+        print(" Firma ".center(80, "*"))
+        print("*".center(80, "*"))
+        print("Server running on port 8080.")
+        serve(app, host="0.0.0.0", port=8080)
